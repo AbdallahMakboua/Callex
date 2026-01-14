@@ -18,7 +18,7 @@ This document explains how to run, deploy, and operate Callex.
 
 1) Clone the repository
 ```bash
-git clone <REPO_URL>
+git clone https://github.com/AbdallahMakboua/Callex.git
 cd callex
 ````
 
@@ -31,13 +31,13 @@ cp .env.example .env
 3. Start all services
 
 ```bash
-docker compose up -d --build
+docker compose -f infra/docker-compose.yml up -d --build
 ```
 
 4. Check containers
 
 ```bash
-docker compose ps
+docker compose -f infra/docker-compose.yml ps
 ```
 
 5. Test the API
