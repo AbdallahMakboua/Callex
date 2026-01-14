@@ -1,0 +1,26 @@
+services:
+  db:
+    image: postgres:16
+    container_name: callex-db
+    environment:
+      POSTGRES_DB: callex
+      POSTGRES_USER: callex
+      POSTGRES_PASSWORD: callexpass
+    ports:
+      - "5432:5432"
+    volumes:
+      - callex_db:/var/lib/postgresql/data
+
+  backend:
+    build: ../backend
+    container_name: callex-backend
+    environment:
+      DATABASE_URL: postgresql://callex:callexpass@db:5432/callex
+      PORT: 8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+
+volumes:
+  callex_db:
