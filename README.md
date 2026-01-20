@@ -1,33 +1,67 @@
 # Callex
 
-**Callex** is an AI-powered customer support and appointment booking platform.
+Callex is a lightweight appointment booking backend built with FastAPI, PostgreSQL, Docker, and Alembic.
 
-It allows businesses to deploy an AI agent that answers customer questions, books appointments, confirms schedules, and hands off to humans when needed — all from one system.
+This repository focuses on:
+- Clean local development workflow
+- Database migrations
+- Simple, reliable API behavior
 
-## What Callex solves
-Businesses lose customers because of:
-- Missed calls  
-- Slow replies  
-- Manual appointment booking  
-- No 24/7 support  
+---
 
-Callex replaces this with an AI receptionist that works 24/7.
+## Local Development (Quick Start)
 
-## Core Features
-- AI chat & voice agent  
-- Appointment booking  
-- Customer memory  
-- SMS / WhatsApp confirmations  
-- Admin dashboard  
-- Human handoff  
+### Prerequisites
+- Docker Desktop
+- Git
+- macOS / Linux (bash-based scripts)
 
-## Tech Stack
-- Frontend: Next.js  
-- Backend: FastAPI  
-- AI: Ollama / OpenAI compatible  
-- Database: PostgreSQL  
-- Vector DB: Qdrant  
-- Infra: Docker, AWS  
+---
 
-## Vision
-Callex will become a plug-and-play AI receptionist for any business.
+### Start the project
+```bash
+./scripts/dev-up.sh
+````
+
+This will:
+
+* Build and start Docker containers
+* Apply database migrations
+* Verify backend health
+
+---
+
+### Create a test booking
+
+```bash
+./scripts/dev-test-book.sh 2026-01-20 10:00:00
+```
+
+---
+
+### View logs
+
+```bash
+./scripts/dev-logs.sh backend
+./scripts/dev-logs.sh db
+```
+
+---
+
+### Stop services
+
+```bash
+./scripts/dev-down.sh
+```
+
+---
+
+### Reset database (DANGER)
+
+```bash
+./scripts/dev-reset.sh
+```
+
+This will **delete all database data** and requires migrations to be re-applied.
+
+```
