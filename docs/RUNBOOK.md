@@ -62,6 +62,13 @@ Database credentials (internal):
 * Port: `5432`
 
 ---
+Make scripts executable (once)
+
+From repo root:
+```bash
+chmod +x scripts/*.sh
+```
+---
 
 ## Start Local Environment (PRIMARY COMMAND)
 
