@@ -1,46 +1,179 @@
-
 ## `docs/RUNBOOK.md`
 
-```md
 # Callex Runbook
 
-This document describes how to run, test, debug, and stop the Callex project locally.
+This document is the single source of truth for running, testing, debugging, and stopping the Callex application locally.
 
 ---
 
-## Overview
+## Purpose
 
-Local development is fully automated using shell scripts located in the `scripts/` directory.
-Manual Docker or Alembic commands should not be needed during daily development.
+- Provide deterministic local startup
+- Eliminate manual Docker / Alembic usage
+- Enable fast debugging and recovery
+- Standardize workflow for all contributors
 
 ---
 
-## Start Local Environment
+## Prerequisites
+
+Required on host machine:
+
+- Docker Desktop (running)
+- Git
+- Bash shell
+- macOS or Linux
+
+Verify Docker:
+
+```bash
+docker --version
+docker compose version
+````
+
+---
+
+## Repository Structure (Relevant)
+
+```
+.
+├── backend/              # FastAPI application
+├── docs/                 # Documentation
+├── scripts/              # All operational commands
+├── docker-compose.yml    # Local orchestration
+└── README.md
+```
+
+All operations **must be executed from repository root**.
+
+---
+
+## Environment Variables
+
+Local environment is fully defined inside Docker Compose.
+
+No `.env` file is required for standard local usage.
+
+Database credentials (internal):
+
+* DB Name: `callex`
+* User: `callex`
+* Password: `callexpass`
+* Port: `5432`
+
+---
+
+## Start Local Environment (PRIMARY COMMAND)
 
 ```bash
 ./scripts/dev-up.sh
 ```
 
-This script performs:
-- Docker Compose build and startup
-- PostgreSQL container initialization
-- Alembic migrations execution
-- Backend health check
+What this does (in order):
+
+1. Builds Docker images
+2. Starts PostgreSQL container
+3. Starts backend container
+4. Applies Alembic migrations
+5. Waits for database readiness
+6. Performs backend health check
+
+Expected result:
+
+* Containers running
+* No errors in output
+* Backend reachable
 
 Backend URL:
+
 ```
 http://localhost:8000
 ```
 
 ---
 
+## Verify Application Health
+
+```bash
+curl http://localhost:8000/health
+```
+
+Expected response:
+
+```json
+{"status":"ok"}
+```
+
+If this fails → **application is not ready**.
+
+---
+
+## Create Test Booking (Recommended)
+
+### Using script (preferred)
+
+```bash
+./scripts/dev-test-book.sh 2026-01-20 10:00:00
+```
+
+### Manual API call
+
+```bash
+curl -X POST http://localhost:8000/book \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name":"Test User",
+    "phone":"+000000000",
+    "date":"2026-01-20",
+    "time":"10:00:00"
+  }'
+```
+
+Expected behavior:
+
+* First request → `201 Created`
+* Same date/time again → `409 Conflict`
+
+This confirms:
+
+* Database connectivity
+* Business rules enforcement
+* API correctness
+
+---
+
+## Logs and Debugging
+
+### Backend logs (FastAPI)
+
+```bash
+./scripts/dev-logs.sh backend
+```
+
+### Database logs (PostgreSQL)
+
+```bash
+./scripts/dev-logs.sh db
+```
+
+### All containers (raw Docker)
+
+```bash
+docker compose logs -f
+```
+
+---
+
 ## Database Migrations
 
-Migrations are handled using **Alembic**.
+Migrations are managed using **Alembic**.
 
-They are automatically applied during startup by `dev-up.sh`.
+### Automatic (default)
 
-Manual run (only if required):
+* Applied automatically during `dev-up.sh`
+* No action required
+
+### Manual (only if debugging)
 
 ```bash
 cd backend
@@ -48,50 +181,7 @@ export DATABASE_URL="postgresql://callex:callexpass@localhost:5432/callex"
 alembic -c alembic.ini upgrade head
 ```
 
----
-
-## API Testing
-
-### Health Check
-
-```bash
-curl http://localhost:8000/health
-```
-
-Expected response:
-```json
-{"status":"ok"}
-```
-
----
-
-### Create Booking
-
-```bash
-curl -X POST http://localhost:8000/book \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Test User","phone":"+000000000","date":"2026-01-20","time":"10:00:00"}'
-```
-
-Behavior:
-- First request → `201 Created`
-- Same slot again → `409 Conflict`
-
----
-
-## Logs
-
-### Backend logs
-
-```bash
-./scripts/dev-logs.sh backend
-```
-
-### Database logs
-
-```bash
-./scripts/dev-logs.sh db
-```
+Manual migration should be **exceptional**, not normal workflow.
 
 ---
 
@@ -103,36 +193,120 @@ Behavior:
 ./scripts/dev-down.sh
 ```
 
-### Stop containers and wipe database
+Use when:
+
+* Finished development
+* Want to resume later with same data
+
+---
+
+### Full reset (DESTROYS DATA)
 
 ```bash
 ./scripts/dev-reset.sh
 ```
 
-Use reset **only when schema or data must be rebuilt from scratch**.
+What it does:
+
+* Stops containers
+* Removes volumes
+* Deletes all database data
+
+Use only when:
+
+* Schema is broken
+* Migration history is invalid
+* Clean rebuild is required
 
 ---
 
-## Common Issues
+## Common Issues & Fixes
 
-### Internal Server Error on booking
+### Backend not responding
 
-Cause:
-- Database migrations not applied
+Check:
+
+```bash
+docker compose ps
+```
 
 Fix:
+
+```bash
+./scripts/dev-down.sh
+./scripts/dev-up.sh
+```
+
+---
+
+### 500 Internal Server Error on booking
+
+Cause:
+
+* Database schema not applied
+
+Fix:
+
 ```bash
 ./scripts/dev-up.sh
 ```
 
 ---
 
-### Database host confusion
+### Database connection errors
 
-- Inside Docker: `db`
-- On host machine: `localhost`
+Important distinction:
 
-Handled automatically by scripts.
+* Inside Docker → host = `db`
+* From host machine → host = `localhost`
+
+This is already handled correctly by scripts.
+
+---
+
+### Port already in use
+
+Check:
+
+```bash
+lsof -i :8000
+lsof -i :5432
+```
+
+Fix:
+
+* Stop conflicting services
+* Or stop Callex and retry
+
+---
+
+## Golden Rules
+
+* ❌ Do NOT run docker compose manually
+* ❌ Do NOT apply migrations by hand unless debugging
+* ✅ Always use scripts
+* ✅ Run commands from repo root
+* ✅ Reset only when necessary
+
+---
+
+## Operational Checklist (Quick)
+
+* [ ] Docker running
+* [ ] `./scripts/dev-up.sh`
+* [ ] Health check OK
+* [ ] Test booking works
+* [ ] Logs clean
+
 ```
 
 ---
+
+إذا بدك الخطوة الجاية:
+- `docs/API.md` احترافي
+- `scripts/` documentation
+- Production Runbook (AWS-ready)
+- أو **PR ثاني يوثق scripts**
+
+قلي مباشرة.
+```
