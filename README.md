@@ -36,7 +36,13 @@ This will:
 ```bash
 ./scripts/dev-test-book.sh 2026-01-20 10:00:00
 ```
+---
 
+### Get available slots (on a specific date)
+
+```bash
+./scripts/dev-test-slots.sh 2026-01-20
+```
 ---
 
 ### View logs
