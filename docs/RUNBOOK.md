@@ -146,7 +146,15 @@ This confirms:
 * Database connectivity
 * Business rules enforcement
 * API correctness
+---
 
+## Get Available Slots
+
+### Using script (preferred)
+
+```bash
+./scripts/dev-test-slots.sh 2026-01-20
+```
 ---
 
 ## Logs and Debugging
