@@ -1,9 +1,3 @@
-
----
-
-## `scripts/dev-test-slots.sh`
-
-```bash
 #!/usr/bin/env bash
 set -e
 
@@ -16,4 +10,8 @@ fi
 
 echo "==> GET /slots (date=$DATE)"
 
-curl -s "http://localhost:8000/slots?date=$DATE" | jq .
+if command -v jq >/dev/null 2>&1; then
+  curl -s "http://localhost:8000/slots?date=$DATE" | jq .
+else
+  curl -s "http://localhost:8000/slots?date=$DATE"
+fi
