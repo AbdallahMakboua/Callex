@@ -155,6 +155,18 @@ This confirms:
 ```bash
 ./scripts/dev-test-slots.sh 2026-01-20
 ```
+Manual API call
+
+```bash
+curl "http://localhost:8000/slots?date=2026-01-20"
+```
+
+Expected behavior:
+
+Returns slots between 09:00 and 17:00
+
+Already booked slots are marked unavailable
+
 ---
 
 ## Logs and Debugging
@@ -313,15 +325,3 @@ Fix:
 * [ ] Test booking works
 * [ ] Logs clean
 
-```
-
----
-
-إذا بدك الخطوة الجاية:
-- `docs/API.md` احترافي
-- `scripts/` documentation
-- Production Runbook (AWS-ready)
-- أو **PR ثاني يوثق scripts**
-
-قلي مباشرة.
-```
