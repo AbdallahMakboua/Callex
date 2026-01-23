@@ -9,29 +9,61 @@ Build an AI system that can:
 
 This is the first sellable version of Callex.
 
+---
+
 ## MVP Scope
-Included:
-- Chat-based booking
+
+### Included
+- Chat-based booking (via AI helper endpoints)
 - API for booking
 - Database for appointments
-- Simple web UI
-- Cloud deployment
+- Script-driven local development workflow
+- Basic documentation (Runbook + API + Architecture)
 
-Not included:
+### Not included (yet)
 - Voice
 - WhatsApp
 - Mobile apps
 - Advanced analytics
+- Payment
 
-## Timeline
-We work in 14 days.
-Each task should take 1–2 hours.
+---
+
+## Working Model (MVP)
+
+1) User asks for a booking date/time
+2) System checks availability (`GET /slots`)
+3) AI helper suggests slots (`POST /ai/book` without time)
+4) User chooses a time
+5) System confirms booking (`POST /ai/book` with time)
+
+---
+
+## Business Rules (Defaults)
+- Working hours: 09:00 → 17:00
+- Slot duration: 30 minutes
+- Double-booking prevention:
+  - API-level conflict handling (HTTP 409)
+  - (Optional future) DB-enforced constraint + graceful error mapping
+
+---
+
+## Timeline (14-day sprint)
+- Keep tasks small (1–2 hours each)
+- Merge frequently via PRs
+- Maintain docs for every feature
+
+---
 
 ## Cost Strategy
-We use:
-- AWS Free Tier
-- Open source tools
-- Local AI when possible
+- Use Docker locally
+- Keep dependencies minimal
+- Deploy later using AWS free/low-cost services when needed
 
-The goal is to reach a live demo with near-zero cost.
+---
 
+## Definition of Done
+- Feature works locally end-to-end
+- Script exists to test it
+- Documentation updated
+- PR merged to `main`
