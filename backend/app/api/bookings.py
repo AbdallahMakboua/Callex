@@ -3,6 +3,7 @@ from datetime import datetime, time, timedelta  # Date/time utilities for slot g
 
 from fastapi import APIRouter, Depends, HTTPException, Query  # FastAPI components
 from sqlalchemy.orm import Session  # DB session type
+from sqlalchemy.exc import IntegrityError  # Raised on DB constraint violations
 
 from app.db.database import get_db  # Dependency that provides a DB session
 from app.schemas.booking import BookingCreate, BookingResponse, SlotsResponse, SlotItem  # API schemas
@@ -30,18 +31,22 @@ def book(payload: BookingCreate, db: Session = Depends(get_db)):
     - Returns 409 if slot already booked
     """
 
-    # Check if requested slot is already taken (API-level conflict check)
+    # API-level conflict check (fast path)
     if is_slot_taken(db, payload.date, payload.time):
         logger.info("booking_conflict date=%s time=%s", payload.date, payload.time)
         raise HTTPException(status_code=409, detail="This slot is already booked")
 
-    # Insert booking into DB
-    booking = create_booking(db, payload)
+    # Insert booking into DB (DB-level uniqueness may still fail under concurrency)
+    try:
+        booking = create_booking(db, payload)
+    except IntegrityError:
+        # Convert DB UNIQUE violation to HTTP 409 instead of 500
+        logger.info("booking_conflict_db date=%s time=%s", payload.date, payload.time)
+        raise HTTPException(status_code=409, detail="This slot is already booked")
 
     # Log business event
     logger.info("booking_created id=%s date=%s time=%s", booking.id, booking.date, booking.time)
 
-    # Return created booking response
     return booking
 
 
@@ -57,23 +62,21 @@ def get_slots(date: str = Query(..., description="YYYY-MM-DD"), db: Session = De
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format")
 
-    # Fetch bookings for that date and build a set of booked times as "HH:MM"
+    # Collect booked times as "HH:MM" for quick availability checks
     booked_times = {b.time.strftime("%H:%M") for b in get_bookings_by_date(db, booking_date)}
 
-    # Generate all slots between WORK_START and WORK_END with step SLOT_MINUTES
+    # Generate all slots for the day
     slots: list[SlotItem] = []
     current = datetime.combine(booking_date, WORK_START)
     end = datetime.combine(booking_date, WORK_END)
 
     while current < end:
-        t = current.strftime("%H:%M")  # Convert time to "HH:MM"
-        slots.append(SlotItem(time=t, available=(t not in booked_times)))  # Mark availability
-        current += timedelta(minutes=SLOT_MINUTES)  # Move to next slot
+        t = current.strftime("%H:%M")
+        slots.append(SlotItem(time=t, available=(t not in booked_times)))
+        current += timedelta(minutes=SLOT_MINUTES)
 
-    # Log request for observability
     logger.info("slots_checked date=%s", date)
 
-    # Return structured response
     return SlotsResponse(
         date=date,
         slot_duration_minutes=SLOT_MINUTES,
@@ -89,7 +92,7 @@ def ai_availability(
     db: Session = Depends(get_db),
 ):
     """
-    AI helper endpoint (integration):
+    AI helper endpoint:
     - Returns available slots filtered by preference bucket (morning/afternoon/evening/any)
     """
 
@@ -103,10 +106,10 @@ def ai_availability(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format")
 
-    # Build set of booked times for that date
+    # Build set of booked times (as "HH:MM")
     booked_times = {b.time.strftime("%H:%M") for b in get_bookings_by_date(db, booking_date)}
 
-    # Generate all slots in dict form expected by filter_available_slots
+    # Generate slot list in dict form expected by filter_available_slots()
     slots = []
     current = datetime.combine(booking_date, WORK_START)
     end = datetime.combine(booking_date, WORK_END)
@@ -116,21 +119,16 @@ def ai_availability(
         slots.append({"time": t, "available": (t not in booked_times)})
         current += timedelta(minutes=SLOT_MINUTES)
 
-    # Create payload compatible with filter_available_slots
-    payload = {
+    slots_payload = {
         "date": date,
         "slot_duration_minutes": SLOT_MINUTES,
         "working_hours": {"from": WORK_START.strftime("%H:%M"), "to": WORK_END.strftime("%H:%M")},
         "slots": slots,
     }
 
-    # Filter available slots based on preference bucket
-    result = filter_available_slots(payload, preference=preference)  # returns {available_slots, count, ...}
+    result = filter_available_slots(slots_payload, preference=preference)
 
-    # Log AI availability call
     logger.info("ai_availability date=%s preference=%s count=%s", date, preference, result.get("count"))
-
-    # Return filtered availability result
     return result
 
 
@@ -143,23 +141,23 @@ def ai_book(payload: AIBookRequest, db: Session = Depends(get_db)):
     - If time is available -> create booking
     """
 
-    # Validate date format
+    # Validate date format early
     try:
         validate_date(payload.date)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format")
 
-    # Validate preference value
+    # Validate preference early
     if payload.preference not in {"any", "morning", "afternoon", "evening"}:
         raise HTTPException(status_code=400, detail="Invalid preference")
 
-    # Convert date string to date object
+    # Convert date string into a Python date object
     booking_date = datetime.strptime(payload.date, "%Y-%m-%d").date()
 
-    # Build set of booked times (as "HH:MM") for that date
+    # Collect booked times as "HH:MM"
     booked_times = {b.time.strftime("%H:%M") for b in get_bookings_by_date(db, booking_date)}
 
-    # Generate slots payload used for filtering/suggestions
+    # Build day slots payload for filtering
     slots = []
     current = datetime.combine(booking_date, WORK_START)
     end = datetime.combine(booking_date, WORK_END)
@@ -176,10 +174,10 @@ def ai_book(payload: AIBookRequest, db: Session = Depends(get_db)):
         "slots": slots,
     }
 
-    # ---------- CASE A: User did NOT provide a time -> return ALL available slots (filtered by preference)
+    # CASE A: No time provided -> return ALL available slots for the requested preference
     if payload.time is None:
         availability = filter_available_slots(slots_payload, preference=payload.preference)
-        suggestions = availability.get("available_slots", [])  # all available times as list[str]
+        suggestions = availability.get("available_slots", [])
 
         msg = "Available slots:" if suggestions else "No available slots for this date."
         logger.info("ai_book_suggest_all date=%s pref=%s count=%s", payload.date, payload.preference, len(suggestions))
@@ -194,18 +192,16 @@ def ai_book(payload: AIBookRequest, db: Session = Depends(get_db)):
             message=msg,
         )
 
-    # ---------- CASE B/C: User provided a time
-    # Normalize time input to "HH:MM"
+    # CASE B/C: Time provided -> normalize to "HH:MM"
     try:
         chosen_time = normalize_time(payload.time)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid time format (use HH:MM or HH:MM:SS)")
 
-    # Build full availability list (ignore preference for closest suggestions to be useful)
-    availability_any = filter_available_slots(slots_payload, preference="any")
-    all_available = availability_any.get("available_slots", [])
+    # Build full available list for nearest suggestions (use preference="any" for best UX)
+    all_available = filter_available_slots(slots_payload, preference="any").get("available_slots", [])
 
-    # ---------- CASE B: requested time is NOT available -> suggest 2 nearest available slots
+    # CASE B: Time is not available -> suggest 2 nearest available times
     if chosen_time not in all_available:
         closest = nearest_slots(all_available, chosen_time, k=2) if all_available else []
         msg = (
@@ -226,8 +222,7 @@ def ai_book(payload: AIBookRequest, db: Session = Depends(get_db)):
             message=msg,
         )
 
-    # ---------- CASE C: requested time is available -> attempt booking
-    # Convert chosen_time ("HH:MM") to python time object
+    # CASE C: Time is available -> attempt to book
     from datetime import time as dt_time
     from app.schemas.booking import BookingCreate as BookingCreateSchema
 
@@ -238,18 +233,20 @@ def ai_book(payload: AIBookRequest, db: Session = Depends(get_db)):
         time=dt_time.fromisoformat(chosen_time + ":00"),
     )
 
-    # Double-check conflict at DB/API layer (safety)
+    # Optional API-level check (fast path). DB-level check still protects concurrency.
     if is_slot_taken(db, booking_create.date, booking_create.time):
         logger.info("ai_book_conflict date=%s time=%s", payload.date, chosen_time)
         raise HTTPException(status_code=409, detail="This slot is already booked")
 
-    # Create booking in DB
-    booking = create_booking(db, booking_create)
+    # Insert booking; convert DB UNIQUE violation into HTTP 409
+    try:
+        booking = create_booking(db, booking_create)
+    except IntegrityError:
+        logger.info("ai_book_conflict_db date=%s time=%s", payload.date, chosen_time)
+        raise HTTPException(status_code=409, detail="This slot is already booked")
 
-    # Log successful AI booking creation
     logger.info("ai_book_created id=%s date=%s time=%s", booking.id, payload.date, chosen_time)
 
-    # Return confirmation payload
     return AIBookConfirmedResponse(
         action="booked",
         message="Booking confirmed.",
