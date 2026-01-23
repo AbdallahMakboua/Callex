@@ -130,3 +130,13 @@ POST /book
 ```
 
 ````
+## GET /ai/availability
+
+Return available slots for a date, optionally filtered by a preference bucket.
+
+### Endpoint
+
+### Example
+```bash
+curl "http://localhost:8000/ai/availability?date=2026-01-20&preference=morning"
+```

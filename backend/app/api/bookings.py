@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.schemas.booking import BookingCreate, BookingResponse, SlotsResponse, SlotItem
 from app.crud.booking import create_booking, get_bookings_by_date, is_slot_taken
+from app.ai.availability import filter_available_slots
 
 router = APIRouter(tags=["Bookings"])
 
@@ -67,3 +68,42 @@ def get_slots(
         },
         slots=slots,
     )
+
+@router.get("/ai/availability")
+def ai_availability(
+    date: str = Query(..., description="YYYY-MM-DD"),
+    preference: str = Query("any", description="any|morning|afternoon|evening"),
+    db: Session = Depends(get_db),
+):
+    # Reuse your existing /slots logic directly by calling function code pattern:
+    # We'll reproduce the same slot generation using the same data source (get_bookings_by_date)
+
+    if preference not in {"any", "morning", "afternoon", "evening"}:
+        raise HTTPException(status_code=400, detail="Invalid preference")
+
+    try:
+        booking_date = datetime.strptime(date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format")
+
+    booked_times = {b.time.strftime("%H:%M") for b in get_bookings_by_date(db, booking_date)}
+
+    slots = []
+    current = datetime.combine(booking_date, WORK_START)
+    end = datetime.combine(booking_date, WORK_END)
+
+    while current < end:
+        t = current.strftime("%H:%M")
+        slots.append({"time": t, "available": t not in booked_times})
+        current += timedelta(minutes=SLOT_MINUTES)
+
+    payload = {
+        "date": date,
+        "slot_duration_minutes": SLOT_MINUTES,
+        "working_hours": {"from": WORK_START.strftime("%H:%M"), "to": WORK_END.strftime("%H:%M")},
+        "slots": slots,
+    }
+
+    result = filter_available_slots(payload, preference=preference)  # type: ignore
+    logger.info("ai_availability date=%s preference=%s count=%s", date, preference, result["count"])
+    return result

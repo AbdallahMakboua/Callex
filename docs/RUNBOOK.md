@@ -325,3 +325,20 @@ Fix:
 * [ ] Test booking works
 * [ ] Logs clean
 
+## AI Availability (Integration)
+
+```bash
+./scripts/dev-test-ai-availability.sh 2026-01-20 any
+./scripts/dev-test-ai-availability.sh 2026-01-20 morning
+./scripts/dev-test-ai-availability.sh 2026-01-20 afternoon
+./scripts/dev-test-ai-availability.sh 2026-01-20 evening
+```
+
+---
+
+# Step 5 — Run & Verify
+```bash
+./scripts/dev-up.sh
+./scripts/dev-test-ai-availability.sh 2026-01-20 any
+./scripts/dev-test-ai-availability.sh 2026-01-20 morning
+```
